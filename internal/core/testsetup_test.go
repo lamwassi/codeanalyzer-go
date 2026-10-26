@@ -19,8 +19,9 @@ var (
 	sharedGreeterL2      *schema.GoApplication // greeter, full call-graph
 	sharedMultipackageL1 *schema.GoApplication // multipackage, symbol-table only
 	sharedMultipackageL2 *schema.GoApplication // multipackage, full call-graph
-	sharedGenericsL1  *schema.GoApplication // generics, symbol-table only
-	sharedChiL2       *schema.GoApplication // chi (external dep), full call-graph
+	sharedGenericsL1     *schema.GoApplication // generics, symbol-table only
+	sharedChiL2          *schema.GoApplication // chi (external dep), full call-graph
+	sharedCollisionL2    *schema.GoApplication // callsite_collision, full call-graph
 )
 
 func TestMain(m *testing.M) {
@@ -52,6 +53,7 @@ func runTestMain(m *testing.M) int {
 		{"multipackage/L2", filepath.Join(tdRoot, "multipackage"), options.LevelCallGraph, &sharedMultipackageL2},
 		{"generics/L1", filepath.Join(tdRoot, "generics"), options.LevelSymbolTable, &sharedGenericsL1},
 		{"chi/L2", filepath.Join(tdRoot, "chi"), options.LevelCallGraph, &sharedChiL2},
+		{"callsite_collision/L2", filepath.Join(tdRoot, "callsite_collision"), options.LevelCallGraph, &sharedCollisionL2},
 	} {
 		outDir, err := os.MkdirTemp(tmpRoot, "out-*")
 		if err != nil {
@@ -96,4 +98,3 @@ func testdataDir() string {
 	abs, _ := filepath.Abs(filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata"))
 	return abs
 }
-

@@ -108,7 +108,11 @@ func (cg *CallGraphBuilder) resolveCallable(
 			continue // already resolved
 		}
 
-		calleeSig := cg.resolveCallSite(pkg, site)
+		// Scope the scan to the callable's own source file (callable.Path),
+		// not the symbol-table bucket it is filed under: a type's methods are
+		// filed under the type's declaring file, which may differ from where
+		// each method body actually lives.
+		calleeSig := cg.resolveCallSite(pkg, callable.Path, site)
 		if calleeSig == "" {
 			utils.Debug("unresolved call site: %s in %s", site.MethodName, callable.Signature)
 			continue
@@ -144,13 +148,29 @@ func (cg *CallGraphBuilder) resolveCallable(
 
 // resolveCallSite resolves a single call site to a callee signature string.
 // Returns "" when the site cannot be resolved (graceful fallback).
-func (cg *CallGraphBuilder) resolveCallSite(pkg *packages.Package, site *schema.GoCallsite) string {
+//
+// The scan is restricted to the AST file given by filePath (the owning
+// callable's own source file). A GoCallsite stores only (line, column), and
+// line numbers restart per file, so the same (line, column) occurs in many
+// files of a multi-file package. Scanning the whole package and taking the
+// first positional match therefore resolves the callee from a colliding call
+// expression in a sibling file — producing a false edge (real callee, wrong
+// caller). Matching within the call site's own file makes the position
+// unambiguous.
+//
+// filePath is the callable's own file (GoCallable.Path), which is authoritative
+// even when the callable is filed in the symbol table under a different file
+// (a type's methods are bucketed under the type's declaring file). If filePath
+// is empty the scan falls back to the whole package (first positional match).
+func (cg *CallGraphBuilder) resolveCallSite(pkg *packages.Package, filePath string, site *schema.GoCallsite) string {
 	if pkg.TypesInfo == nil {
 		return ""
 	}
 
-	// Walk the package's syntax to find the call expression at this location.
 	for _, astFile := range pkg.Syntax {
+		if filePath != "" && cg.astFileKey(astFile) != filePath {
+			continue
+		}
 		var result string
 		ast.Inspect(astFile, func(n ast.Node) bool {
 			if result != "" {
@@ -170,8 +190,23 @@ func (cg *CallGraphBuilder) resolveCallSite(pkg *packages.Package, site *schema.
 		if result != "" {
 			return result
 		}
+		// With a specific filePath we matched the right file; stop. Without one
+		// (fallback), keep scanning other files for a positional match.
+		if filePath != "" {
+			return ""
+		}
 	}
 	return ""
+}
+
+// astFileKey returns the project-relative path of an AST file, matching the
+// fileKey form used as symbol-table keys.
+func (cg *CallGraphBuilder) astFileKey(astFile *ast.File) string {
+	tf := cg.fset.File(astFile.Pos())
+	if tf == nil {
+		return ""
+	}
+	return utils.RelativePath(cg.projectDir, tf.Name())
 }
 
 // resolveCallExpr resolves a *ast.CallExpr to a callee signature using go/types.
